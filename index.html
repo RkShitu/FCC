@@ -2008,6 +2008,12 @@ body>header .bg-slate-900\/80 button.bg-indigo-600{background:#fff!important;col
                     <div id="adminSwapRequestsList" class="space-y-1.5 max-h-40 overflow-y-auto"></div>
                 </section>
                 <section id="adminRoutineEditSection" class="admin-panel-card p-3">
+                    <div class="mb-3 rounded-xl border border-rose-200 bg-rose-50/70 p-3">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div class="min-w-0"><h4 class="text-[11px] font-black text-rose-800"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Full Routine Controls</h4><p class="mt-1 text-[9px] leading-relaxed text-rose-700">এটি Routine Set থেকে আলাদা রাখা হয়েছে। সব বিভাগের সব শিক্ষকের রুটিন একসাথে পরিষ্কার হবে; কাজটি ফেরত আনা নাও যেতে পারে।</p></div>
+                            <button type="button" onclick="clearFullRoutine()" class="shrink-0 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black shadow-sm"><i class="fa-solid fa-trash-can mr-1.5"></i>Clear Full Routine</button>
+                        </div>
+                    </div>
                     <div class="flex flex-wrap items-end justify-between gap-2 border-b border-slate-100 pb-2 mb-2.5">
                         <div><h4 class="admin-panel-title"><i class="fa-solid fa-calendar-days text-indigo-600 mr-1"></i>শিক্ষকের ক্লাস ও রুটিন অ্যাসাইনমেন্ট</h4><p class="text-[9px] text-slate-500">প্রথমে ডিপার্টমেন্ট নির্বাচন করুন, তারপর টিচার নির্বাচন করে প্রতিটি পিরিয়ডে সেকশন দিন।</p></div>
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-1.5 w-full sm:w-auto">
@@ -2017,7 +2023,13 @@ body>header .bg-slate-900\/80 button.bg-indigo-600{background:#fff!important;col
                         </div>
                     </div>
                     <div id="adminScheduleGrid" class="overflow-x-auto"></div>
-                    <div class="flex justify-between items-center mt-2"><span id="adminScheduleContactHint" class="text-[9px] text-slate-400">টিচারের ফোন থাকলে Swap Request-এ Call / WhatsApp অপশন দেখা যাবে।</span><button onclick="saveAdminSchedule()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-[10px] font-bold"><i class="fa-solid fa-floppy-disk mr-1"></i>রুটিন সেভ করুন</button></div>
+                    <div class="flex flex-wrap justify-between items-center gap-2 mt-2">
+                        <span id="adminScheduleContactHint" class="text-[9px] text-slate-400">নির্বাচিত শিক্ষক বা পুরো রুটিন পরিষ্কার করতে নিচের বাটন ব্যবহার করুন।</span>
+                        <div class="flex flex-wrap gap-1.5">
+                            <button type="button" onclick="resetSelectedTeacherRoutine()" class="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-[10px] font-bold"><i class="fa-solid fa-rotate-left mr-1"></i>Reset Class Routine</button>
+                            <button onclick="saveAdminSchedule()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-[10px] font-bold"><i class="fa-solid fa-floppy-disk mr-1"></i>রুটিন সেভ করুন</button>
+                        </div>
+                    </div>
                 </section>
             </div>
             <div class="bg-white border-t border-slate-200 px-4 py-2.5 flex items-center justify-between"><span class="text-[9px] text-slate-400">Changes are saved in this browser.</span><button onclick="closeAdminPanel()" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-md text-[10px] font-bold">Close</button></div>
@@ -2163,6 +2175,16 @@ body>header .bg-slate-900\/80 button.bg-indigo-600{background:#fff!important;col
             activeView = view;
             document.body.setAttribute('data-print-scope', view);
 
+            // The global filter controls belong only to Full Routine.
+            // Hide both the top toggle and the panel on every other tab.
+            const filterToggle = document.getElementById('btnToggleControls');
+            const filterPanel = document.getElementById('controlsContainer');
+            if (filterToggle) filterToggle.classList.toggle('hidden', view !== 'excel');
+            if (filterPanel) {
+                if (view === 'excel') filterPanel.classList.remove('hidden');
+                else filterPanel.classList.add('hidden');
+            }
+
             document.getElementById('excelView').classList.add('hidden');
             document.getElementById('teacherView').classList.add('hidden');
             document.getElementById('classView').classList.add('hidden');
@@ -2276,10 +2298,27 @@ body>header .bg-slate-900\/80 button.bg-indigo-600{background:#fff!important;col
             });
         }
 
-        function renderIndividualTeacher() {
-            const idx = document.getElementById('teacherSelect').value;
-            const t = teachersData[idx] || teachersData[0];
+        function renderIndividualTeacher(requestedTeacher) {
+            const select = document.getElementById('teacherSelect');
+            let idx;
+            let t = null;
+            // Support both dropdown index calls and direct calls from Live Class teacher links.
+            if (requestedTeacher !== undefined && requestedTeacher !== null && String(requestedTeacher).trim() !== '') {
+                const requested = String(requestedTeacher).trim().toLowerCase();
+                const foundIndex = teachersData.findIndex(x =>
+                    String(x.name || '').trim().toLowerCase() === requested ||
+                    String(x.srt || '').trim().toLowerCase() === requested ||
+                    String(x.id ?? '').trim().toLowerCase() === requested
+                );
+                if (foundIndex >= 0) { idx = String(foundIndex); t = teachersData[foundIndex]; if (select) select.value = idx; }
+            }
+            if (!t) {
+                idx = select ? select.value : '';
+                t = teachersData[Number(idx)] || null;
+            }
+            if (!t && teachersData.length) { t = teachersData[0]; idx = '0'; if (select) select.value = '0'; }
             const container = document.getElementById('teacherCardContainer');
+            if (!t || !container) return;
 
             let daysHTML = '';
             const daysOrder = [
@@ -2830,8 +2869,13 @@ body>header .bg-slate-900\/80 button.bg-indigo-600{background:#fff!important;col
 
         function applyRemoteState(state) {
             if (!state || typeof state !== 'object') return;
+            const previousTeacher = (() => { const el=document.getElementById('teacherSelect'); const old=el?.value; const t=Number.isInteger(Number(old))?teachersData[Number(old)]:null; return t ? {name:t.name, srt:t.srt} : null; })();
             if (Array.isArray(state.teachers) && state.teachers.length) {
+                // Google Sheet is authoritative: replace the stale browser copy before rebuilding views.
                 teachersData = state.teachers.map(normaliseTeacher);
+                // Keep the public reference aligned with the authoritative live array.
+                // Teacher-wise enhancements and class-wise views read window.teachersData.
+                window.teachersData = teachersData;
                 localStorage.setItem('fcc_teachers_data', JSON.stringify(teachersData));
             }
             if (Array.isArray(state.sections)) {
@@ -2850,6 +2894,12 @@ body>header .bg-slate-900\/80 button.bg-indigo-600{background:#fff!important;col
             }
             renderExcelTable(teachersData);
             populateTeacherSelects();
+            if (previousTeacher) {
+                const matchIndex=teachersData.findIndex(t=>String(t.srt||'').trim().toLowerCase()===String(previousTeacher.srt||'').trim().toLowerCase() || String(t.name||'').trim().toLowerCase()===String(previousTeacher.name||'').trim().toLowerCase());
+                const teacherSelect=document.getElementById('teacherSelect');
+                if(matchIndex>=0 && teacherSelect) teacherSelect.value=String(matchIndex);
+            }
+            if (typeof renderIndividualTeacher === 'function') renderIndividualTeacher();
             renderNoticeBar();
             if (typeof renderAdminSectionList === 'function') renderAdminSectionList();
             if (typeof updateSectionSelects === 'function') updateSectionSelects();
@@ -2858,6 +2908,11 @@ body>header .bg-slate-900\/80 button.bg-indigo-600{background:#fff!important;col
             if (typeof updatePublicDashboardSmart === 'function') updatePublicDashboardSmart();
             if (typeof renderTaskManager === 'function') renderTaskManager();
             if (typeof updateTeacherCount === 'function') updateTeacherCount();
+            // Re-render all views after authoritative remote state replaces the browser cache.
+            if (typeof renderClassSchedule === 'function') renderClassSchedule();
+            if (typeof renderIndividualTeacher === 'function') renderIndividualTeacher();
+            if (typeof populateAdminScheduleTeachers === 'function') populateAdminScheduleTeachers();
+            if (typeof updatePublicDashboardSmart === 'function') updatePublicDashboardSmart();
         }
 
         async function fetchFromGoogleSheet() {
@@ -3061,7 +3116,7 @@ body>header .bg-slate-900\/80 button.bg-indigo-600{background:#fff!important;col
                 const raw = localStorage.getItem('fcc_teachers_data');
                 if(raw) {
                     const parsed = JSON.parse(raw);
-                    if(Array.isArray(parsed) && parsed.length) teachersData = parsed.map(normaliseTeacher);
+                    if(Array.isArray(parsed) && parsed.length) { teachersData = parsed.map(normaliseTeacher); window.teachersData = teachersData; }
                 }
             } catch(e) { console.warn('Local routine load failed', e); }
             teachersData.forEach(normaliseTeacher);
@@ -3228,6 +3283,63 @@ body>header .bg-slate-900\/80 button.bg-indigo-600{background:#fff!important;col
             document.getElementById('adminScheduleTeacher').value=String(idx); renderAdminScheduleGrid();
             alert(`Schedule saved for ${t.name}.`);
         }
+        function refreshRoutineViewsAfterEdit() {
+            saveRoutineLocal();
+            renderExcelTable(teachersData);
+            populateTeacherSelects();
+            populateAdminScheduleTeachers();
+            if (typeof renderClassSchedule === 'function') renderClassSchedule();
+            if (typeof renderIndividualTeacher === 'function') renderIndividualTeacher();
+            if (typeof updatePublicDashboardSmart === 'function') updatePublicDashboardSmart();
+        }
+
+        function resetSelectedTeacherRoutine() {
+            if (!isAdminLoggedIn) { alert('রুটিন পরিবর্তন করতে Admin Login করুন।'); return; }
+            const sel = document.getElementById('adminScheduleTeacher');
+            const idx = sel ? parseInt(sel.value, 10) : NaN;
+            const teacher = Number.isInteger(idx) ? teachersData[idx] : null;
+            if (!teacher) { alert('আগে একজন শিক্ষক নির্বাচন করুন।'); return; }
+            if (!confirm(`${teacher.name}-এর সব দিনের P1–P7 ক্লাস ফ্রি করে দেবেন?`)) return;
+            ['SUN','MON','TUE','WED','THU'].forEach(day => {
+                if (!teacher.days) teacher.days = {};
+                teacher.days[day] = ['','','','','','',''];
+            });
+            recalcTeacherTotal(teacher);
+            refreshRoutineViewsAfterEdit();
+            const dept = document.getElementById('adminScheduleDept');
+            if (dept) dept.value = 'ALL';
+            const search = document.getElementById('adminTeacherSearch');
+            if (search) search.value = '';
+            populateAdminScheduleTeachers();
+            const current = document.getElementById('adminScheduleTeacher');
+            if (current) current.value = String(idx);
+            renderAdminScheduleGrid();
+            alert(`${teacher.name}-এর রুটিন রিসেট হয়েছে। পরিবর্তনটি Google Sheet-এ সিঙ্ক হবে যদি Admin session সক্রিয় থাকে।`);
+        }
+
+        function clearFullRoutine() {
+            if (!isAdminLoggedIn) { alert('পুরো রুটিন পরিষ্কার করতে Admin Login করুন।'); return; }
+            const dept = document.getElementById('adminScheduleDept')?.value || 'ALL';
+            const search = (document.getElementById('adminTeacherSearch')?.value || '').trim();
+            if (dept !== 'ALL') {
+                alert('Clear Full Routine ব্যবহার করতে Department ড্রপডাউনে “All Departments” নির্বাচন করুন।');
+                return;
+            }
+            if (search) {
+                alert('Clear Full Routine-এর আগে Teacher Search বক্স খালি করুন।');
+                return;
+            }
+            if (!confirm('সতর্কতা: সব শিক্ষক ও সব বিভাগের সম্পূর্ণ রুটিন মুছে যাবে। আপনি কি নিশ্চিত?')) return;
+            teachersData.forEach(teacher => {
+                if (!teacher.days) teacher.days = {};
+                ['SUN','MON','TUE','WED','THU'].forEach(day => teacher.days[day] = ['','','','','','','']);
+                recalcTeacherTotal(teacher);
+            });
+            refreshRoutineViewsAfterEdit();
+            renderAdminScheduleGrid();
+            alert('সম্পূর্ণ রুটিন পরিষ্কার হয়েছে। Google Sheet-এ সিঙ্ক হবে যদি Admin session সক্রিয় থাকে।');
+        }
+
         function parseCSV(text) {
             const rows=[]; let row=[], cell='', quote=false;
             for(let i=0;i<text.length;i++){
@@ -3789,9 +3901,10 @@ window.addEventListener('load', function() {
 
   window.fccOpenTeacherByName=function(name){
     try{
-      const target=teachersData.find(t=>String(t.name||'').trim()===String(name||'').trim());
+      const key=String(name||'').trim().toLowerCase();
+      const target=teachersData.find(t=>String(t.name||'').trim().toLowerCase()===key || String(t.srt||'').trim().toLowerCase()===key);
       if(target && typeof window.showTeacherDetail==='function'){ window.showTeacherDetail(target); return; }
-      if(typeof window.renderIndividualTeacher==='function'){ window.renderIndividualTeacher(name); return; }
+      if(target && typeof window.renderIndividualTeacher==='function'){ window.renderIndividualTeacher(target.name); if(typeof window.switchView==='function') window.switchView('teacher'); return; }
       const el=[...document.querySelectorAll('[data-teacher-name]')].find(x=>x.dataset.teacherName===name); el?.click();
     }catch(e){console.warn('Teacher detail unavailable',e);}
   };
@@ -4149,9 +4262,13 @@ window.renderSmartLive=function(){
   function enhance(){
     const container=document.getElementById('teacherCardContainer');
     const select=document.getElementById('teacherSelect');
-    if(!container || !select || !Array.isArray(window.teachersData)) return;
+    // Always render from the same authoritative array used by the core app.
+    // window.teachersData can otherwise retain the initial demo array after remote state replacement.
+    const data = (typeof teachersData !== 'undefined' && Array.isArray(teachersData)) ? teachersData : window.teachersData;
+    if(!container || !select || !Array.isArray(data)) return;
+    window.teachersData = data;
     const idx=Number(select.value);
-    const t=window.teachersData[idx] || window.teachersData[0];
+    const t=data[idx] || data[0];
     if(!t) return;
     const layout=container.querySelector('.teacher-screen-layout');
     if(!layout) return;
